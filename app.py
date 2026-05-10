@@ -1,5 +1,6 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
+from streamlit_gsheets import GSheetsConnection # Try this first
+# If that fails, try: from st_gsheets_connection import GSheetsConnection
 import time
 
 # Set to wide mode for the big screen
