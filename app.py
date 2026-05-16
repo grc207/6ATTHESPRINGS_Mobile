@@ -7,8 +7,8 @@ from datetime import datetime
 # 1. Page Configuration
 st.set_page_config(page_title="LIVE LEADERBOARD", layout="wide")
 
-# REPLACE THIS URL with a direct link to your true image file (e.g., uploaded to Imgur, postimages, or raw GitHub link)
-LOGO_URL = "https://imgur.com/a/nNmcwys.png" 
+# Pointing to the direct, raw image delivery domain from Imgur
+LOGO_URL = "https://i.imgur.com/nNmcwys.png" 
 
 st.markdown(
     f"""
@@ -54,7 +54,7 @@ st.markdown(
 # 2. Data Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def get_raw_data():
+def get_processed_data():
     try:
         # Load Roster from "Runner Data"
         roster = conn.read(worksheet="Runner Data", ttl="0s")
@@ -63,6 +63,7 @@ def get_raw_data():
         # Clean roster columns and compile Name
         roster['Bib'] = pd.to_numeric(roster['Bib'], errors='coerce').fillna(0).astype(int)
         roster['Name'] = roster['First Name'].astype(str) + " " + roster['Last Name'].astype(str)
+        roster['Age'] = pd.to_numeric(roster['Age'], errors='coerce').fillna(0).astype(int)
         
         # Load Raw Reads from "Data Input"
         reads = conn.read(worksheet="Data Input", ttl="0s")
@@ -70,7 +71,7 @@ def get_raw_data():
         reads['Bib'] = pd.to_numeric(reads['Bib'], errors='coerce').fillna(0).astype(int)
         
         if reads.empty or 'Bib' not in reads.columns:
-            return pd.DataFrame()
+            return pd.DataFrame(), pd.DataFrame()
 
         # Race configuration
         start_time = datetime.strptime("08:00:00", "%H:%M:%S")
@@ -103,31 +104,41 @@ def get_raw_data():
                 
         df['Overall Time'] = df['Last_Read'].apply(calc_elapsed)
         
-        # Strict Sorting: Loops (Highest) -> Last Read Timestamp (Earliest/Shortest Time)
-        df = df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
+        # Split Youth completely out before assigning any rankings
+        youth_mask = df['Age'] < 18
+        youth_df = df[youth_mask].copy()
+        adult_df = df[~youth_mask].copy()
         
-        return df
+        # Strict Sorting for both pools: Loops (Highest) -> Last Read Timestamp (Earliest)
+        adult_df = adult_df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
+        youth_df = youth_df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
+        
+        return adult_df, youth_df
     except Exception as e:
         st.error(f"Error processing live data: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
-# 3. Process Live Metrics and Positions
-data = get_raw_data()
+# 3. Process Live Metrics and Split Positions
+adult_data, youth_data = get_processed_data()
 
-if not data.empty:
-    # Generate overall numeric positions (1, 2, 3...)
-    data['Position'] = [i+1 for i in range(len(data))]
+if not adult_data.empty:
+    # Generate overall numeric positions for adults (Starting strictly at 1)
+    adult_data['Position'] = [i+1 for i in range(len(adult_data))]
     
-    # Generate Class Places (M1, M2... / F1, F2...)
-    data['Class Place'] = ""
+    # Generate Class Places for adults only (Starting strictly at 1)
+    adult_data['Class Place'] = ""
     m_count, f_count = 1, 1
-    for idx, row in data.iterrows():
+    for idx, row in adult_data.iterrows():
         if str(row['gender']).upper() == 'M':
-            data.at[idx, 'Class Place'] = f"M{m_count}"
+            adult_data.at[idx, 'Class Place'] = f"M{m_count}"
             m_count += 1
         elif str(row['gender']).upper() == 'F':
-            data.at[idx, 'Class Place'] = f"F{f_count}"
+            adult_data.at[idx, 'Class Place'] = f"F{f_count}"
             f_count += 1
+
+if not youth_data.empty:
+    # Generate division ranking explicitly for the youth pool (Starting strictly at 1)
+    youth_data['Division Place'] = [f"Y{i+1}" for i in range(len(youth_data))]
 
 # 4. Cycle & Chunk State Setup
 views = ["OVERALL 6-HOUR", "FEMALE 6-HOUR", "MALE 6-HOUR", "PODIUM & YOUTH"]
@@ -138,29 +149,27 @@ if 'row_chunk' not in st.session_state:
     st.session_state.row_chunk = 0
 
 current_view = views[st.session_state.view_index % len(views)]
-
-# Dropped rows per screen to 10 to give the table breathing room on a standard monitor
 ROWS_PER_SCREEN = 10 
 
 # 5. Render Layout
 st.markdown(f"<h1 style='text-align: center; font-size: 55px; margin-bottom: 30px;'>🏆 {current_view}</h1>", unsafe_allow_html=True)
 
-if data.empty:
+if adult_data.empty and youth_data.empty:
     st.info("Awaiting initial RFID reads...")
 else:
     cols_to_show = []
     display_df = pd.DataFrame()
     
     if current_view == "OVERALL 6-HOUR":
-        display_df = data.copy()
+        display_df = adult_data.copy()
         cols_to_show = ['Position', 'Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
     elif current_view == "FEMALE 6-HOUR":
-        display_df = data[data['gender'].str.upper() == 'F'].copy()
+        display_df = adult_data[adult_data['gender'].str.upper() == 'F'].copy()
         cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
     elif current_view == "MALE 6-HOUR":
-        display_df = data[data['gender'].str.upper() == 'M'].copy()
+        display_df = adult_data[adult_data['gender'].str.upper() == 'M'].copy()
         cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
     elif current_view == "PODIUM & YOUTH":
@@ -169,20 +178,28 @@ else:
         
         with col1:
             st.markdown("<h3 style='text-align: center;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
-            top_m = data[data['gender'].str.upper() == 'M'].head(5).copy()
-            st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}))
+            top_m = adult_data[adult_data['gender'].str.upper() == 'M'].head(5).copy()
+            if not top_m.empty:
+                st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}))
+            else:
+                st.write("No entries yet")
             
         with col2:
             st.markdown("<h3 style='text-align: center;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
-            top_f = data[data['gender'].str.upper() == 'F'].head(5).copy()
-            st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}))
+            top_f = adult_data[adult_data['gender'].str.upper() == 'F'].head(5).copy()
+            if not top_f.empty:
+                st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}))
+            else:
+                st.write("No entries yet")
             
         st.markdown("<br><hr><br>", unsafe_allow_html=True)
         st.markdown("<h3 style='text-align: center;'>🧒 All Youth (Under 18)</h3>", unsafe_allow_html=True)
-        youth_df = data[data['Age'] < 18].copy()
-        st.table(youth_df[['Position', 'Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']].rename(columns={'Loop_Count': 'Loops'}))
+        if not youth_data.empty:
+            st.table(youth_data[['Division Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']].rename(columns={'Loop_Count': 'Loops', 'Division Place': 'Class Place'}))
+        else:
+            st.write("No youth reads logged yet")
 
-    # Chunking / Scrolling engine for main pages
+    # Chunking / Scrolling engine for standard categories
     if not display_df.empty:
         total_rows = len(display_df)
         start_row = st.session_state.row_chunk * ROWS_PER_SCREEN
@@ -197,6 +214,7 @@ else:
         else:
             st.session_state.row_chunk += 1
     else:
+        # Step through layout index when transitioning past the Podium dashboard view
         st.session_state.row_chunk = 0
         st.session_state.view_index += 1
 
