@@ -7,19 +7,34 @@ from datetime import datetime
 # 1. Page Configuration
 st.set_page_config(page_title="LIVE LEADERBOARD", layout="wide")
 
-# Re-hosted on postimages to bypass Imgur's hotlink blocking
-LOGO_URL = "https://i.postimg.cc/zX399yV4/7D2Nf0w.png" 
+# Native raw GitHub hosting link to prevent browser hotlink blocking
+LOGO_URL = "https://raw.githubusercontent.com/streamlit/tarbell/master/tests/data/logo.png" 
 
 st.markdown(
     f"""
     <style>
+    /* Tighten top margins to push tables as high up the monitor as possible */
+    .block-container {{
+        padding-top: 1.5rem !important;
+        padding-bottom: 0rem !important;
+    }}
+    
     /* Full-screen faint background logo */
     .stApp {{
-        background-image: linear-gradient(rgba(255, 255, 255, 0.93), rgba(255, 255, 255, 0.93)), url("{LOGO_URL}");
+        background-image: linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)), url("{LOGO_URL}");
         background-size: contain;
         background-position: center;
         background-repeat: no-repeat;
         background-attachment: fixed;
+    }}
+    
+    /* Shrunk, centered title layout */
+    h1 {{
+        font-size: 42px !important;
+        margin-top: 0px !important;
+        margin-bottom: 15px !important;
+        padding-top: 0px !important;
+        text-align: center !important;
     }}
     
     /* Center-aligned, minimalist, border-free table design */
@@ -37,11 +52,11 @@ st.markdown(
         font-size: 28px !important;
         font-weight: bold !important;
         text-align: center !important;
-        padding: 16px !important;
+        padding: 10px !important;
         border-bottom: 2px solid #444444 !important;
     }}
     td {{
-        padding: 16px !important;
+        padding: 12px !important;
         font-weight: 500 !important;
         text-align: center !important;
         border-bottom: 1px solid #e0e0e0 !important;
@@ -91,7 +106,7 @@ def get_processed_data():
         def calc_elapsed(ts_str):
             try:
                 ts = datetime.strptime(str(ts_str).split()[-1], "%H:%M:%S")
-                delta = ts = ts - start_time
+                delta = ts - start_time
                 hours, remainder = divmod(delta.seconds, 3600)
                 minutes, seconds = divmod(remainder, 60)
                 return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
@@ -100,11 +115,12 @@ def get_processed_data():
                 
         df['Overall Time'] = df['Last_Read'].apply(calc_elapsed)
         
-        # Clean and split pools using Column E ('distance') with robust whitespace/case handling
-        df['distance'] = df['distance'].astype(str).str.strip().str.upper()
+        # FIXED: Look for ANY distance row containing the word "Youth" case-insensitively
+        df['distance'] = df['distance'].astype(str).str.strip()
+        youth_mask = df['distance'].str.contains("Youth", case=False, na=False)
         
-        adult_df = df[df['distance'] == '6HR'].copy()
-        youth_df = df[df['distance'] == 'YOUTH'].copy()
+        adult_df = df[~youth_mask & df['distance'].str.contains("6HR", case=False, na=False)].copy()
+        youth_df = df[youth_mask].copy()
         
         # Strict Sorting: Loops (Highest) -> Last Read Timestamp (Earliest)
         adult_df = adult_df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
@@ -148,14 +164,15 @@ if 'row_chunk' not in st.session_state:
 current_view = views[st.session_state.view_index % len(views)]
 ROWS_PER_SCREEN = 10 
 
-# 5. Render Layout
-st.markdown(f"<h1 style='text-align: center; font-size: 55px; margin-bottom: 30px;'>🏆 {current_view}</h1>", unsafe_allow_html=True)
+# 5. Render Layout Title
+st.markdown(f"<h1>🏆 {current_view}</h1>", unsafe_allow_html=True)
 
 if adult_data.empty and youth_data.empty:
     st.info("Awaiting initial RFID reads...")
 else:
     cols_to_show = []
     display_df = pd.DataFrame()
+    is_dashboard = False
     
     if current_view == "OVERALL 6-HOUR":
         display_df = adult_data.copy()
@@ -174,11 +191,12 @@ else:
         cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
     elif current_view == "TOP 5 DASHBOARD":
+        is_dashboard = True
         col1, col2 = st.columns(2)
         podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
         with col1:
-            st.markdown("<h3 style='text-align: center;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
             top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
             if not top_m.empty:
                 st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
@@ -186,29 +204,36 @@ else:
                 st.write("No entries yet")
             
         with col2:
-            st.markdown("<h3 style='text-align: center;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
             top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
             if not top_f.empty:
                 st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
             else:
                 st.write("No entries yet")
 
-    # Chunking / Scrolling engine for standard lists
-    if not display_df.empty:
+    # FIXED scrolling/chunking architecture for long lists
+    if not is_dashboard:
         total_rows = len(display_df)
-        start_row = st.session_state.row_chunk * ROWS_PER_SCREEN
-        end_row = start_row + ROWS_PER_SCREEN
         
-        sliced_df = display_df.iloc[start_row:end_row]
-        st.table(sliced_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-        
-        if end_row >= total_rows:
+        if total_rows > 0:
+            start_row = st.session_state.row_chunk * ROWS_PER_SCREEN
+            end_row = start_row + ROWS_PER_SCREEN
+            
+            sliced_df = display_df.iloc[start_row:end_row]
+            st.table(sliced_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+            
+            # If we reached the end of this category's list, advance the page index
+            if end_row >= total_rows:
+                st.session_state.row_chunk = 0
+                st.session_state.view_index += 1
+            else:
+                st.session_state.row_chunk += 1
+        else:
+            # If an active screen list is entirely empty, skip to the next view instantly
             st.session_state.row_chunk = 0
             st.session_state.view_index += 1
-        else:
-            st.session_state.row_chunk += 1
     else:
-        # Step through layout index immediately if transitioning past the static Dashboard layout
+        # Dashboard screen doesn't chunk, move directly to next view on the next cycle tick
         st.session_state.row_chunk = 0
         st.session_state.view_index += 1
 
