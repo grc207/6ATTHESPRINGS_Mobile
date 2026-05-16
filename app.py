@@ -10,7 +10,6 @@ import os
 st.set_page_config(page_title="LIVE LEADERBOARD", layout="wide")
 
 # --- SECURE BACKGROUND LOGO ENGINE ---
-# Looks for the real logo file inside your repo directory
 bg_image_css = ""
 image_exts = ["logo.png", "logo.jpg", "logo.jpeg"]
 found_image = None
@@ -24,7 +23,6 @@ if found_image:
     try:
         with open(found_image, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
-        # Set background style safely
         bg_image_css = f"background-image: linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)), url(data:image/png;base64,{encoded_string});"
     except Exception:
         bg_image_css = "background-color: #f9f9f9;"
@@ -34,9 +32,9 @@ else:
 st.markdown(
     f"""
     <style>
-    /* Compact vertical padding layout to maximize screen rows */
+    /* Moved headers down slightly more to fit perfectly on monitor screens */
     .block-container {{
-        padding-top: 2.0rem !important;
+        padding-top: 3.2rem !important;
         padding-bottom: 0rem !important;
     }}
     
@@ -49,18 +47,18 @@ st.markdown(
         background-attachment: fixed;
     }}
     
-    /* Main Headers shrunk by 30% for high visibility */
+    /* Main titles cleanly positioned */
     h1 {{
         font-size: 30px !important;
         margin-top: 0px !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 20px !important;
         padding-top: 0px !important;
         text-align: center !important;
         font-weight: bold !important;
         color: #111111 !important;
     }}
     
-    /* Center-aligned, minimalist table design */
+    /* Standard minimalist design for scrolling lists */
     table {{
         width: 100% !important;
         font-size: 24px !important;
@@ -83,6 +81,19 @@ st.markdown(
         font-weight: 500 !important;
         text-align: center !important;
         border-bottom: 1px solid #e0e0e0 !important;
+    }}
+    
+    /* Dedicated full-border targeting rules for Top 5 Dashboard tables */
+    div[data-testid="stHorizontalBlock"] table {{
+        border: 2px solid #555555 !important;
+    }}
+    div[data-testid="stHorizontalBlock"] th {{
+        border: 1px solid #555555 !important;
+        border-bottom: 2px solid #555555 !important;
+        background-color: rgba(0, 0, 0, 0.02) !important;
+    }}
+    div[data-testid="stHorizontalBlock"] td {{
+        border: 1px solid #555555 !important;
     }}
     </style>
     """,
@@ -206,60 +217,4 @@ else:
         cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
     elif current_view == "MALE 6-HOUR":
-        display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].copy()
-        cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-        
-    elif current_view == "YOUTH DIVISION":
-        display_df = youth_data.copy()
-        cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-        
-    elif current_view == "TOP 5 DASHBOARD":
-        is_dashboard = True
-        col1, col2 = st.columns(2)
-        podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-        
-        with col1:
-            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
-            top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
-            if not top_m.empty:
-                st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-            else:
-                st.write("No entries yet")
-            
-        with col2:
-            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
-            top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
-            if not top_f.empty:
-                st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-            else:
-                st.write("No entries yet")
-
-    # Complete scrolling/chunking architecture for long lists
-    if not is_dashboard:
-        total_rows = len(display_df)
-        
-        if total_rows > 0:
-            start_row = st.session_state.row_chunk * ROWS_PER_SCREEN
-            end_row = start_row + ROWS_PER_SCREEN
-            
-            sliced_df = display_df.iloc[start_row:end_row]
-            st.table(sliced_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-            
-            # If we reached the end of this category's list, advance the page index
-            if end_row >= total_rows:
-                st.session_state.row_chunk = 0
-                st.session_state.view_index += 1
-            else:
-                st.session_state.row_chunk += 1
-        else:
-            # If an active screen list is entirely empty, skip to the next view instantly
-            st.session_state.row_chunk = 0
-            st.session_state.view_index += 1
-    else:
-        # Dashboard screen doesn't chunk, move directly to next view on the next cycle tick
-        st.session_state.row_chunk = 0
-        st.session_state.view_index += 1
-
-# 6. Refresh interval (12 seconds)
-time.sleep(12)
-st.rerun()
+        display_df = adult_data[adult_data['gender'].str.upper().
