@@ -90,20 +90,20 @@ st.markdown(
         border-bottom: 1px solid #e0e0e0 !important;
     }}
     
-    /* Full borders around Dashboard columns / layouts */
-    div[data-testid="stHorizontalBlock"] table {{
+    /* CRITICAL FIX: Isolated dashboard border rules to prevent leaking onto other pages */
+    .dashboard-table table {{
         border: 2px solid #555555 !important;
     }}
-    div[data-testid="stHorizontalBlock"] th {{
+    .dashboard-table th {{
         border: 1px solid #555555 !important;
         border-bottom: 2px solid #555555 !important;
         background-color: rgba(0, 0, 0, 0.02) !important;
     }}
-    div[data-testid="stHorizontalBlock"] td {{
+    .dashboard-table td {{
         border: 1px solid #555555 !important;
     }}
     
-    /* Hide background loading text boxes so transitions stay completely seamless */
+    /* Hide background loading spinners for ultra-clean page transitions */
     div[data-testid="stStatusWidget"] {{
         display: none !important;
     }}
@@ -118,13 +118,14 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def get_processed_data():
     for attempt in range(3):
         try:
-            roster = conn.read(worksheet="Runner Data", ttl="0s")
+            # Set to 60 seconds to protect API limits while preserving rapid page turns
+            roster = conn.read(worksheet="Runner Data", ttl="60s")
             roster.columns = roster.columns.str.strip()
             
             roster['Bib'] = pd.to_numeric(roster['Bib'], errors='coerce').fillna(0).astype(int)
             roster['Name'] = roster['First Name'].astype(str) + " " + roster['Last Name'].astype(str)
             
-            reads = conn.read(worksheet="Data Input", ttl="0s")
+            reads = conn.read(worksheet="Data Input", ttl="60s")
             reads.columns = reads.columns.str.strip()
             reads['Bib'] = pd.to_numeric(reads['Bib'], errors='coerce').fillna(0).astype(int)
             
@@ -174,9 +175,8 @@ def get_processed_data():
                 
     return pd.DataFrame(), pd.DataFrame()
 
-# 3. Secure background-fetching
-with st.spinner("Updating leaderboard metrics..."):
-    adult_data, youth_data = get_processed_data()
+# 3. Pull Data Metrics
+adult_data, youth_data = get_processed_data()
 
 if not adult_data.empty:
     adult_data['Position'] = [i+1 for i in range(len(adult_data))]
@@ -251,7 +251,9 @@ else:
             st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
             top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
             if not top_m.empty:
+                st.markdown('<div class="dashboard-table">', unsafe_allow_html=True)
                 st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.write("No entries yet")
             
@@ -259,18 +261,22 @@ else:
             st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
             top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
             if not top_f.empty:
+                st.markdown('<div class="dashboard-table">', unsafe_allow_html=True)
                 st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.write("No entries yet")
                 
-        # Row 2: Centered Non-Binary Layout (ONLY runs inside this Dashboard view block)
+        # Row 2: Centered Non-Binary Layout
         st.markdown("<br>", unsafe_allow_html=True)
         bottom_row_cols = st.columns([1, 2, 1])
         with bottom_row_cols[1]:
             st.markdown("<h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
             top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
             if not top_x.empty:
+                st.markdown('<div class="dashboard-table">', unsafe_allow_html=True)
                 st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.write("No entries yet")
 
@@ -294,7 +300,6 @@ else:
             st.session_state.row_chunk = 0
             st.session_state.view_index += 1
     else:
-        # Dashboard advances directly onto the next category index
         st.session_state.row_chunk = 0
         st.session_state.view_index += 1
 
