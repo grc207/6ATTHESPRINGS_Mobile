@@ -174,7 +174,7 @@ def get_processed_data():
                 
     return pd.DataFrame(), pd.DataFrame()
 
-# 3. Secure background-fetching to completely eliminate flashing frames
+# 3. Secure background-fetching
 with st.spinner("Updating leaderboard metrics..."):
     adult_data, youth_data = get_processed_data()
 
@@ -245,7 +245,7 @@ else:
         is_dashboard = True
         podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
-        # Row 1: Men and Women perfectly balanced side-by-side
+        # Row 1: Men and Women side-by-side
         top_row_cols = st.columns(2)
         with top_row_cols[0]:
             st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
@@ -263,9 +263,9 @@ else:
             else:
                 st.write("No entries yet")
                 
-        # Row 2: Centered Non-Binary Layout perfectly scaled directly below
+        # Row 2: Centered Non-Binary Layout (ONLY runs inside this Dashboard view block)
         st.markdown("<br>", unsafe_allow_html=True)
-        bottom_row_cols = st.columns([1, 2, 1])  # Creates layout margins to lock table to center
+        bottom_row_cols = st.columns([1, 2, 1])
         with bottom_row_cols[1]:
             st.markdown("<h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
             top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
@@ -294,6 +294,7 @@ else:
             st.session_state.row_chunk = 0
             st.session_state.view_index += 1
     else:
+        # Dashboard advances directly onto the next category index
         st.session_state.row_chunk = 0
         st.session_state.view_index += 1
 
