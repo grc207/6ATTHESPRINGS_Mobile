@@ -84,18 +84,13 @@ st.html(
         border-bottom: 1px solid #e0e0e0 !important;
     }}
     
-    /* --- PURE ST ELEMENT INJECTIONS (NO BREAKABLE STRINGS) --- */
-    /* Target only tables inside element containers assigned to our custom keys */
-    div[data-testid="stHorizontalBlock"] div[id^="b_men"] table,
-    div[data-testid="stHorizontalBlock"] div[id^="b_women"] table,
-    div[data-testid="stHorizontalBlock"] div[id^="b_nb"] table {{
+    /* --- PURE DASHBOARD SPECIFIC SCALING RULES --- */
+    div[id^="dash_zone"] table {{
         font-size: 19px !important;
         border: 2px solid #555555 !important;
     }}
     
-    div[data-testid="stHorizontalBlock"] div[id^="b_men"] th,
-    div[data-testid="stHorizontalBlock"] div[id^="b_women"] th,
-    div[data-testid="stHorizontalBlock"] div[id^="b_nb"] th {{
+    div[id^="dash_zone"] th {{
         font-size: 21px !important;
         padding: 6px !important;
         border: 1px solid #555555 !important;
@@ -103,9 +98,7 @@ st.html(
         background-color: rgba(0, 0, 0, 0.02) !important;
     }}
     
-    div[data-testid="stHorizontalBlock"] div[id^="b_men"] td,
-    div[data-testid="stHorizontalBlock"] div[id^="b_women"] td,
-    div[data-testid="stHorizontalBlock"] div[id^="b_nb"] td {{
+    div[id^="dash_zone"] td {{
         padding: 6px !important;
         border: 1px solid #555555 !important;
     }}
@@ -220,8 +213,8 @@ elif current_view == "TOP RUNNERS DASHBOARD":
 else:
     CURRENT_SCREEN_TIME = 5
 
-# Unique dynamic key to clear DOM layouts across cycles
-unique_layout_key = f"canvas_v{st.session_state.view_index}_c{st.session_state.row_chunk}"
+# Master unique rendering container key
+unique_layout_key = f"panel_canvas_{st.session_state.view_index}_{st.session_state.row_chunk}"
 
 if adult_data.empty and youth_data.empty:
     st.info("Awaiting initial RFID reads...")
@@ -268,40 +261,51 @@ else:
                 st.session_state.view_index += 1
 
         else:
-            # --- PODIUM DASHBOARD PATH (NO EMBEDDED CUSTOM HTML CLASS WRAPPERS) ---
+            # --- PODIUM DASHBOARD PATH (UNIFORM STABLE COLUMNS STRUCTURE) ---
             podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
             
-            dash_cols = st.columns(2)
+            # Using strict 4-column master alignment map layout to perfectly center and position content blocks natively
+            dash_cols = st.columns(4)
+            
+            # Box 1: Men (Spans columns 1 and 2)
             with dash_cols[0]:
-                st.container(key="b_men")
+                st.container(key="dash_zone_men_A")
                 st.markdown("<h3 style='font-size:18px; font-weight:bold; color:#222222; text-align:center; margin-top:0px; margin-bottom:8px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
                 top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
                 if not top_m.empty:
                     st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
                 else:
                     st.write("No entries yet")
-                    
             with dash_cols[1]:
-                st.container(key="b_women")
+                # Dynamic spacer linkage matching column index structure 
+                st.container(key="dash_zone_men_B")
+            
+            # Box 2: Women (Spans columns 3 and 4)
+            with dash_cols[2]:
+                st.container(key="dash_zone_women_A")
                 st.markdown("<h3 style='font-size:18px; font-weight:bold; color:#222222; text-align:center; margin-top:0px; margin-bottom:8px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
                 top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
                 if not top_f.empty:
                     st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
                 else:
                     st.write("No entries yet")
+            with dash_cols[3]:
+                st.container(key="dash_zone_women_B")
             
+            # Box 3: Non-Binary Row (Perfectly centered across columns 2 and 3 natively)
             top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].head(5).copy()
             if not top_x.empty:
-                st.markdown("<br>", unsafe_allow_html=True)
-                nb_cols = st.columns([1, 2, 1])
-                with nb_cols[1]:
-                    st.container(key="b_nb")
+                with dash_cols[1]:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.container(key="dash_zone_nb_A")
                     st.markdown("<h3 style='font-size:18px; font-weight:bold; color:#222222; text-align:center; margin-top:0px; margin-bottom:8px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
                     st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                with dash_cols[2]:
+                    st.container(key="dash_zone_nb_B")
                 
             st.session_state.row_chunk = 0
             st.session_state.view_index += 1
 
-# 6. Global single delay execution loop
+# 6. Global time transition management delay
 time.sleep(CURRENT_SCREEN_TIME)
 st.rerun()
