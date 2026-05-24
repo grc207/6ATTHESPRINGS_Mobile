@@ -29,7 +29,8 @@ if found_image:
 else:
     bg_image_css = "background-color: #f9f9f9;"
 
-st.markdown(
+# 2. Strict Isolated Style Sheet Injection
+st.html(
     f"""
     <style>
     /* Keeps headers comfortably visible below the top monitor edge */
@@ -58,7 +59,7 @@ st.markdown(
         color: #111111 !important;
     }}
     
-    /* Standard table styles */
+    /* Standard global list table styling */
     table {{
         width: 100% !important;
         font-size: 24px !important;
@@ -83,27 +84,28 @@ st.markdown(
         border-bottom: 1px solid #e0e0e0 !important;
     }}
     
-    /* --- 20% SCALED DOWN DASHBOARD SKIN --- */
-    .dashboard-scaled h3 {{
-        font-size: 18px !important; /* Down from 22px */
-        font-weight: bold !important;
-        color: #222222 !important;
-        text-align: center !important;
-        margin-top: 0px !important;
-        margin-bottom: 8px !important;
-    }}
-    .dashboard-scaled table {{
-        font-size: 19px !important; /* Down from 24px */
+    /* --- PURE ST ELEMENT INJECTIONS (NO BREAKABLE STRINGS) --- */
+    /* Target only tables inside element containers assigned to our custom keys */
+    div[data-testid="stHorizontalBlock"] div[id^="b_men"] table,
+    div[data-testid="stHorizontalBlock"] div[id^="b_women"] table,
+    div[data-testid="stHorizontalBlock"] div[id^="b_nb"] table {{
+        font-size: 19px !important;
         border: 2px solid #555555 !important;
     }}
-    .dashboard-scaled th {{
-        font-size: 21px !important; /* Down from 26px */
+    
+    div[data-testid="stHorizontalBlock"] div[id^="b_men"] th,
+    div[data-testid="stHorizontalBlock"] div[id^="b_women"] th,
+    div[data-testid="stHorizontalBlock"] div[id^="b_nb"] th {{
+        font-size: 21px !important;
         padding: 6px !important;
         border: 1px solid #555555 !important;
         border-bottom: 2px solid #555555 !important;
         background-color: rgba(0, 0, 0, 0.02) !important;
     }}
-    .dashboard-scaled td {{
+    
+    div[data-testid="stHorizontalBlock"] div[id^="b_men"] td,
+    div[data-testid="stHorizontalBlock"] div[id^="b_women"] td,
+    div[data-testid="stHorizontalBlock"] div[id^="b_nb"] td {{
         padding: 6px !important;
         border: 1px solid #555555 !important;
     }}
@@ -113,11 +115,10 @@ st.markdown(
         display: none !important;
     }}
     </style>
-    """,
-    unsafe_allow_html=True
+    """
 )
 
-# 2. Data Connection
+# 3. Data Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_processed_data():
@@ -179,7 +180,7 @@ def get_processed_data():
                 
     return pd.DataFrame(), pd.DataFrame()
 
-# 3. Pull Data Metrics
+# 4. Pull Data Metrics
 adult_data, youth_data = get_processed_data()
 
 if not adult_data.empty:
@@ -201,7 +202,7 @@ if not adult_data.empty:
 if not youth_data.empty:
     youth_data['Class Place'] = [f"Y{i+1}" for i in range(len(youth_data))]
 
-# 4. Cycle & Speed Architecture
+# 5. Cycle & Speed Architecture
 views = ["OVERALL 6-HOUR", "YOUTH DIVISION", "TOP RUNNERS DASHBOARD", "FEMALE 6-HOUR", "MALE 6-HOUR"]
 
 if 'view_index' not in st.session_state:
@@ -219,14 +220,12 @@ elif current_view == "TOP RUNNERS DASHBOARD":
 else:
     CURRENT_SCREEN_TIME = 5
 
-# Create a master layout key string using both the current view name and the row chunk.
-# This forces Streamlit to cleanly tear down the entire page canvas if EITHER changes.
+# Unique dynamic key to clear DOM layouts across cycles
 unique_layout_key = f"canvas_v{st.session_state.view_index}_c{st.session_state.row_chunk}"
 
 if adult_data.empty and youth_data.empty:
     st.info("Awaiting initial RFID reads...")
 else:
-    # 5. Dynamic Container Key Architecture
     with st.container(key=unique_layout_key):
         if current_view != "TOP RUNNERS DASHBOARD":
             # --- STANDARD LIST VIEW PATH ---
@@ -269,14 +268,13 @@ else:
                 st.session_state.view_index += 1
 
         else:
-            # --- PODIUM DASHBOARD PATH ---
+            # --- PODIUM DASHBOARD PATH (NO EMBEDDED CUSTOM HTML CLASS WRAPPERS) ---
             podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-            
-            st.markdown('<div class="dashboard-scaled">', unsafe_allow_html=True)
             
             dash_cols = st.columns(2)
             with dash_cols[0]:
-                st.markdown("<h3>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
+                st.container(key="b_men")
+                st.markdown("<h3 style='font-size:18px; font-weight:bold; color:#222222; text-align:center; margin-top:0px; margin-bottom:8px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
                 top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
                 if not top_m.empty:
                     st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
@@ -284,27 +282,26 @@ else:
                     st.write("No entries yet")
                     
             with dash_cols[1]:
-                st.markdown("<h3>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
+                st.container(key="b_women")
+                st.markdown("<h3 style='font-size:18px; font-weight:bold; color:#222222; text-align:center; margin-top:0px; margin-bottom:8px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
                 top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
                 if not top_f.empty:
                     st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
                 else:
                     st.write("No entries yet")
             
-            # Non-Binary center rendering natively inside columns
             top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].head(5).copy()
             if not top_x.empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 nb_cols = st.columns([1, 2, 1])
                 with nb_cols[1]:
-                    st.markdown("<h3>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
+                    st.container(key="b_nb")
+                    st.markdown("<h3 style='font-size:18px; font-weight:bold; color:#222222; text-align:center; margin-top:0px; margin-bottom:8px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
                     st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
                 
-            st.markdown('</div>', unsafe_allow_html=True)
-            
             st.session_state.row_chunk = 0
             st.session_state.view_index += 1
 
-# 6. Global single delay and rerun architecture
+# 6. Global single delay execution loop
 time.sleep(CURRENT_SCREEN_TIME)
 st.rerun()
