@@ -103,7 +103,7 @@ st.markdown(
         border: 1px solid #555555 !important;
     }}
     
-    /* Custom layout engine to safely center-align the non-binary dashboard block */
+    /* Custom CSS container to align and center the dashboard non-binary grid cleanly */
     .centered-dashboard-block table {{
         max-width: 50% !important;
         margin: 0 auto !important;
@@ -229,7 +229,7 @@ elif current_view == "TOP RUNNERS DASHBOARD":
 else:
     CURRENT_SCREEN_TIME = 5
 
-# 5. Render Layout Title
+# 5. Render Layout Title (Skip adding main banner title on Dashboard view)
 if current_view != "TOP RUNNERS DASHBOARD":
     st.markdown(f"<h1>🏆 {current_view}</h1>", unsafe_allow_html=True)
 
@@ -263,4 +263,56 @@ else:
         # Row 1: Men and Women side-by-side
         top_row_cols = st.columns(2)
         with top_row_cols[0]:
-            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃
+            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
+            top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
+            if not top_m.empty:
+                st.markdown('<div class="dashboard-table">', unsafe_allow_html=True)
+                st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.write("No entries yet")
+            
+        with top_row_cols[1]:
+            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
+            top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
+            if not top_f.empty:
+                st.markdown('<div class="dashboard-table">', unsafe_allow_html=True)
+                st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.write("No entries yet")
+                
+        # Row 2: Fixed isolated data check specifically targeting Non-Binary values ('X')
+        top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].head(5).copy()
+        if not top_x.empty:
+            st.markdown("<br><h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
+            st.markdown('<div class="centered-dashboard-block">', unsafe_allow_html=True)
+            st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    # 6. Complete scrolling/chunking architecture for long lists
+    if not is_dashboard:
+        total_rows = len(display_df)
+        
+        if total_rows > 0:
+            start_row = st.session_state.row_chunk * ROWS_PER_SCREEN
+            end_row = start_row + ROWS_PER_SCREEN
+            
+            sliced_df = display_df.iloc[start_row:end_row]
+            st.table(sliced_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+            
+            if end_row >= total_rows:
+                st.session_state.row_chunk = 0
+                st.session_state.view_index += 1
+            else:
+                st.session_state.row_chunk += 1
+        else:
+            st.session_state.row_chunk = 0
+            st.session_state.view_index += 1
+    else:
+        st.session_state.row_chunk = 0
+        st.session_state.view_index += 1
+
+# 7. Apply dynamic view delays
+time.sleep(CURRENT_SCREEN_TIME)
+st.rerun()
