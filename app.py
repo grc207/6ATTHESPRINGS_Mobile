@@ -90,7 +90,7 @@ st.markdown(
         border-bottom: 1px solid #e0e0e0 !important;
     }}
     
-    /* CRITICAL FIX: Isolated dashboard border rules to prevent leaking onto other pages */
+    /* Isolated dashboard table styling rules */
     .dashboard-table table {{
         border: 2px solid #555555 !important;
     }}
@@ -118,7 +118,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 def get_processed_data():
     for attempt in range(3):
         try:
-            # Set to 60 seconds to protect API limits while preserving rapid page turns
+            # Local cache protecting Google limits while keeping snappy rotation
             roster = conn.read(worksheet="Runner Data", ttl="60s")
             roster.columns = roster.columns.str.strip()
             
@@ -245,7 +245,7 @@ else:
         is_dashboard = True
         podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
-        # Row 1: Men and Women side-by-side
+        # Row 1: Men and Women layout
         top_row_cols = st.columns(2)
         with top_row_cols[0]:
             st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
@@ -267,20 +267,18 @@ else:
             else:
                 st.write("No entries yet")
                 
-        # Row 2: Centered Non-Binary Layout
-        st.markdown("<br>", unsafe_allow_html=True)
-        bottom_row_cols = st.columns([1, 2, 1])
-        with bottom_row_cols[1]:
-            st.markdown("<h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
-            top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
-            if not top_x.empty:
+        # Row 2: Centered Non-Binary Layout (EVERY piece of layout logic is now locked in here)
+        top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
+        if not top_x.empty:
+            st.markdown("<br>", unsafe_allow_html=True)
+            bottom_row_cols = st.columns([1, 2, 1])
+            with bottom_row_cols[1]:
+                st.markdown("<h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
                 st.markdown('<div class="dashboard-table">', unsafe_allow_html=True)
                 st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
                 st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.write("No entries yet")
 
-    # Complete scrolling/chunking architecture for long lists
+    # 6. Complete scrolling/chunking architecture for long lists
     if not is_dashboard:
         total_rows = len(display_df)
         
@@ -303,6 +301,6 @@ else:
         st.session_state.row_chunk = 0
         st.session_state.view_index += 1
 
-# 6. Apply dynamic view delays
+# 7. Apply dynamic view delays
 time.sleep(CURRENT_SCREEN_TIME)
 st.rerun()
