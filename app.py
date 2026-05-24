@@ -225,15 +225,16 @@ elif current_view == "TOP RUNNERS DASHBOARD":
 else:
     CURRENT_SCREEN_TIME = 5
 
-# Create a clean canvas wrapper
+# Create a clean, single global structural layout wrapper block
 display_container = st.container()
 
 if adult_data.empty and youth_data.empty:
     with display_container:
         st.info("Awaiting initial RFID reads...")
 else:
-    if current_view != "TOP RUNNERS DASHBOARD":
-        with display_container:
+    with display_container:
+        if current_view != "TOP RUNNERS DASHBOARD":
+            # 5A. Handle regular scrolling list views
             st.markdown(f"<h1>🏆 {current_view}</h1>", unsafe_allow_html=True)
             
             cols_to_show = []
@@ -263,24 +264,20 @@ else:
                 sliced_df = display_df.iloc[start_row:end_row]
                 st.table(sliced_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
                 
-                # CRITICAL INTERRUPT: If chunk completes, rotate the state counter and instantly trigger a refresh
                 if end_row >= total_rows:
                     st.session_state.row_chunk = 0
                     st.session_state.view_index += 1
-                    time.sleep(CURRENT_SCREEN_TIME)
-                    st.rerun()
                 else:
                     st.session_state.row_chunk += 1
             else:
                 st.session_state.row_chunk = 0
                 st.session_state.view_index += 1
-                st.rerun()
 
-    else:
-        # Dashboard View Block
-        with display_container:
+        else:
+            # 5B. Handle Top 5 Podium Dashboard layout
             podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
             
+            # Wrap everything inside a localized custom css container block 
             st.markdown('<div class="dashboard-scaled">', unsafe_allow_html=True)
             
             dash_cols = st.columns(2)
@@ -309,12 +306,9 @@ else:
                 
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # CRITICAL INTERRUPT: Dashboard holds static view for its screen time, updates state counter, and reruns
-        st.session_state.row_chunk = 0
-        st.session_state.view_index += 1
-        time.sleep(CURRENT_SCREEN_TIME)
-        st.rerun()
+            st.session_state.row_chunk = 0
+            st.session_state.view_index += 1
 
-# Fallback timer loop step
+# 6. Unified Single execution delay point across all states 
 time.sleep(CURRENT_SCREEN_TIME)
 st.rerun()
