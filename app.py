@@ -288,4 +288,5 @@ else:
             st.markdown("<br><h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
             st.markdown('<div class="centered-dashboard-block">', unsafe_allow_html=True)
             st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-            st.markdown('</div>', unsafe_allow_html=
+            st.markdown('</div>', unsafe_allow_html=)
+            
