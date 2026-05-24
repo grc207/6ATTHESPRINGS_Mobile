@@ -90,7 +90,20 @@ st.markdown(
         border-bottom: 1px solid #e0e0e0 !important;
     }}
     
-    /* Hide background loading spinners for ultra-clean page transitions */
+    /* CSS Target Rule: ONLY apply full grid borders to tables sitting inside our custom Dashboard container */
+    div.dashboard-container table {{
+        border: 2px solid #555555 !important;
+    }}
+    div.dashboard-container th {{
+        border: 1px solid #555555 !important;
+        border-bottom: 2px solid #555555 !important;
+        background-color: rgba(0, 0, 0, 0.02) !important;
+    }}
+    div.dashboard-container td {{
+        border: 1px solid #555555 !important;
+    }}
+    
+    /* Hide background loading text updates so screen flashes are completely gone */
     div[data-testid="stStatusWidget"] {{
         display: none !important;
     }}
@@ -232,57 +245,38 @@ else:
         is_dashboard = True
         podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
         
-        # Dashboard-specific explicit CSS injection to strictly prevent leaking onto scrolling pages
-        st.markdown(
-            """
-            <style>
-            .db-card table {
-                border: 2px solid #555555 !important;
-                width: 100% !important;
-                background-color: transparent !important;
-            }
-            .db-card th {
-                border: 1px solid #555555 !important;
-                border-bottom: 2px solid #555555 !important;
-                background-color: rgba(0, 0, 0, 0.03) !important;
-            }
-            .db-card td {
-                border: 1px solid #555555 !important;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-        
-        # Row 1: Men and Women Layout Columns
-        top_row_cols = st.columns(2)
-        with top_row_cols[0]:
-            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
-            top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
-            if not top_m.empty:
-                html_m = top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}).to_html(index=False, escape=False)
-                st.markdown(f'<div class="db-card">{html_m}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown("<p style='text-align:center;'>No entries yet</p>", unsafe_allow_html=True)
+        # Lock everything dashboard-related inside a single native container block
+        with st.container():
+            st.markdown('<div class="dashboard-container">', unsafe_allow_html=True)
             
-        with top_row_cols[1]:
-            st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
-            top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
-            if not top_f.empty:
-                html_f = top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}).to_html(index=False, escape=False)
-                st.markdown(f'<div class="db-card">{html_f}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown("<p style='text-align:center;'>No entries yet</p>", unsafe_allow_html=True)
-                
-        # Row 2: Centered Non-Binary Layout (Safely self-contained as raw HTML text)
-        top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
-        if not top_x.empty:
-            st.markdown("<br>", unsafe_allow_html=True)
-            bottom_row_cols = st.columns([1, 2, 1])
-            with bottom_row_cols[1]:
-                st.markdown("<h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
-                html_x = top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}).to_html(index=False, escape=False)
-                st.markdown(f'<div class="db-card">{html_x}</div>', unsafe_allow_html=True)
+            # Top Split Row: Men and Women
+            top_cols = st.columns(2)
+            with top_cols[0]:
+                st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
+                top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
+                if not top_m.empty:
+                    st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                else:
+                    st.write("No entries yet")
+                    
+            with top_cols[1]:
+                st.markdown("<h3 style='text-align: center; margin-top:0px;'>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
+                top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
+                if not top_f.empty:
+                    st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                else:
+                    st.write("No entries yet")
+            
+            # Bottom Center Row: Non-Binary
+            top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
+            if not top_x.empty:
+                st.markdown("<br>", unsafe_allow_html=True)
+                bottom_cols = st.columns([1, 2, 1])
+                with bottom_cols[1]:
+                    st.markdown("<h3 style='text-align: center; margin-top: 0px;'>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
+                    st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+                    
+            st.markdown('</div>', unsafe_allow_html=True)
 
     # 6. Complete scrolling/chunking architecture for long lists
     if not is_dashboard:
