@@ -7,7 +7,7 @@ import base64
 import os
 
 # 1. Page Configuration
-st.set_page_config(page_title="LIVE LEADERBOARD", layout="wide")
+st.set_page_config(page_title="RACER LOOKUP", layout="wide")
 
 # --- SECURE BACKGROUND LOGO ENGINE ---
 bg_image_css = ""
@@ -23,7 +23,7 @@ if found_image:
     try:
         with open(found_image, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
-        bg_image_css = f"background-image: linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)), url(data:image/png;base64,{encoded_string});"
+            bg_image_css = f"background-image: linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)), url(data:image/png;base64,{encoded_string});"
     except Exception:
         bg_image_css = "background-color: #f9f9f9;"
 else:
@@ -32,13 +32,11 @@ else:
 st.markdown(
     f"""
     <style>
-    /* Keeps headers comfortably visible below the top monitor edge */
     .block-container {{
-        padding-top: 3.2rem !important;
-        padding-bottom: 0rem !important;
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
     }}
     
-    /* Full-screen faint background logo */
     .stApp {{
         {bg_image_css}
         background-size: contain;
@@ -47,30 +45,25 @@ st.markdown(
         background-attachment: fixed;
     }}
     
-    /* Main titles formatting */
     h1 {{
         font-size: 30px !important;
         margin-top: 0px !important;
         margin-bottom: 20px !important;
-        padding-top: 0px !important;
         text-align: center !important;
         font-weight: bold !important;
         color: #111111 !important;
     }}
     
-    /* Standard table styles */
     table {{
         width: 100% !important;
-        font-size: 24px !important;
+        font-size: 22px !important;
         background-color: transparent !important;
         border-collapse: collapse !important;
-        margin-left: auto;
-        margin-right: auto;
     }}
     th {{
         background-color: transparent !important;
         color: #222222 !important;
-        font-size: 26px !important;
+        font-size: 24px !important;
         font-weight: bold !important;
         text-align: center !important;
         padding: 8px !important;
@@ -81,36 +74,6 @@ st.markdown(
         font-weight: 500 !important;
         text-align: center !important;
         border-bottom: 1px solid #e0e0e0 !important;
-    }}
-    
-    /* --- 20% SCALED DOWN DASHBOARD SKIN --- */
-    .dashboard-scaled h3 {{
-        font-size: 18px !important;
-        font-weight: bold !important;
-        color: #222222 !important;
-        text-align: center !important;
-        margin-top: 0px !important;
-        margin-bottom: 8px !important;
-    }}
-    .dashboard-scaled table {{
-        font-size: 19px !important;
-        border: 2px solid #555555 !important;
-    }}
-    .dashboard-scaled th {{
-        font-size: 21px !important;
-        padding: 6px !important;
-        border: 1px solid #555555 !important;
-        border-bottom: 2px solid #555555 !important;
-        background-color: rgba(0, 0, 0, 0.02) !important;
-    }}
-    .dashboard-scaled td {{
-        padding: 6px !important;
-        border: 1px solid #555555 !important;
-    }}
-    
-    /* Hide background loading spinners for ultra-clean page transitions */
-    div[data-testid="stStatusWidget"] {{
-        display: none !important;
     }}
     </style>
     """,
@@ -124,41 +87,34 @@ def get_processed_data():
     for attempt in range(3):
         try:
             # Load Roster
-            roster = conn.read(worksheet="Runner Data", ttl="60s")
+            roster = conn.read(worksheet="Runner Data", ttl="10s")  # Lower TTL for interactive lookup snappiness
             roster.columns = roster.columns.str.strip()
             
             roster['Bib'] = pd.to_numeric(roster['Bib'], errors='coerce').fillna(0).astype(int)
             roster['Name'] = roster['First Name'].astype(str) + " " + roster['Last Name'].astype(str)
             
             # Load Data Input Sheet
-            reads = conn.read(worksheet="Data Input", ttl="60s")
+            reads = conn.read(worksheet="Data Input", ttl="10s")
             
             if reads.empty:
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Slice down to exactly columns A, B, and C
             reads = reads.iloc[:, :3]
             reads.columns = ['Chip_ID', 'Timestamp', 'Bib']
             
-            # Clean timestamp string formats safely
             if pd.api.types.is_datetime64_any_dtype(reads['Timestamp']):
                 reads['Timestamp'] = reads['Timestamp'].dt.strftime('%H:%M:%S')
             else:
                 reads['Timestamp'] = reads['Timestamp'].astype(str).str.strip("'\" ")
             
-            # Convert visual helper Bib column cleanly to numbers
             reads['Bib'] = pd.to_numeric(reads['Bib'], errors='coerce').fillna(0).astype(int)
-
-            # Silently drop uncalculated or empty helper rows without short-circuiting the script execution
             reads = reads[reads['Bib'] > 0]
 
-            # Re-check true dataset depth before continuing to aggregation steps
             if len(reads) == 0:
                 return pd.DataFrame(), pd.DataFrame()
 
             start_time = datetime.strptime("08:00:00", "%H:%M:%S")
             
-            # Group rows by numeric Bib values
             stats = reads.groupby('Bib').agg(
                 Loop_Count=('Timestamp', 'count'),
                 Last_Read=('Timestamp', 'max')
@@ -195,7 +151,7 @@ def get_processed_data():
 
         except Exception as e:
             if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                time.sleep(2)
+                time.sleep(1)
                 continue
             else:
                 st.error(f"Error processing live data: {e}")
@@ -203,7 +159,7 @@ def get_processed_data():
                 
     return pd.DataFrame(), pd.DataFrame()
 
-# 3. Pull Data Metrics
+# 3. Pull and Master-Rank Data
 adult_data, youth_data = get_processed_data()
 
 if not adult_data.empty:
@@ -225,108 +181,50 @@ if not adult_data.empty:
 if not youth_data.empty:
     youth_data['Class Place'] = [f"Y{i+1}" for i in range(len(youth_data))]
 
-# 4. Cycle & Speed Architecture
-views = ["OVERALL 6-HOUR", "YOUTH DIVISION", "TOP RUNNERS DASHBOARD", "FEMALE 6-HOUR", "MALE 6-HOUR"]
+# 4. Interactive Search UI Components
+st.markdown("<h1>🔍 COMPETITOR RESULTS LOOKUP</h1>", unsafe_allow_html=True)
 
-if 'view_index' not in st.session_state:
-    st.session_state.view_index = 0
-if 'row_chunk' not in st.session_state:
-    st.session_state.row_chunk = 0
+# UI Inputs side-by-side or stacked cleanly
+search_query = st.text_input("Search by Name or Bib Number:", value="", placeholder="e.g. Bob or 142").strip()
 
-current_view = views[st.session_state.view_index % len(views)]
-ROWS_PER_SCREEN = 10 
+category = st.radio(
+    "Filter Division:",
+    options=["Overall (Adults)", "Male", "Female", "Non-Binary", "Youth"],
+    horizontal=True
+)
 
-if current_view == "YOUTH DIVISION":
-    CURRENT_SCREEN_TIME = 10
-elif current_view == "TOP RUNNERS DASHBOARD":
-    CURRENT_SCREEN_TIME = 7
-else:
-    CURRENT_SCREEN_TIME = 5
-
-# Master rendering placeholder
-main_view_placeholder = st.empty()
-
+# 5. Core Filtering Logic
 if adult_data.empty and youth_data.empty:
-    main_view_placeholder.info("Awaiting initial RFID reads...")
+    st.info("Awaiting initial RFID reads...")
 else:
-    with main_view_placeholder.container():
-        if current_view != "TOP RUNNERS DASHBOARD":
-            # --- STANDARD LIST VIEW PATH ---
-            st.markdown(f"<h1>🏆 {current_view}</h1>", unsafe_allow_html=True)
-            
-            cols_to_show = []
-            display_df = pd.DataFrame()
-            
-            if current_view == "OVERALL 6-HOUR":
-                display_df = adult_data.copy()
-                cols_to_show = ['Position', 'Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-                
-            elif current_view == "FEMALE 6-HOUR":
-                display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].copy()
-                cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-                
-            elif current_view == "MALE 6-HOUR":
-                display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].copy()
-                cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-                
-            elif current_view == "YOUTH DIVISION":
-                display_df = youth_data.copy()
-                cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-                
-            total_rows = len(display_df)
-            if total_rows > 0:
-                start_row = st.session_state.row_chunk * ROWS_PER_SCREEN
-                end_row = start_row + ROWS_PER_SCREEN
-                
-                sliced_df = display_df.iloc[start_row:end_row]
-                st.table(sliced_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-                
-                if end_row >= total_rows:
-                    st.session_state.row_chunk = 0
-                    st.session_state.view_index += 1
-                else:
-                    st.session_state.row_chunk += 1
-            else:
-                st.session_state.row_chunk = 0
-                st.session_state.view_index += 1
+    # Segment data based on selected category radio button
+    if category == "Youth":
+        display_df = youth_data.copy()
+        cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
+    else:
+        # Base filter handles excluding youth out of overall paths
+        if category == "Overall (Adults)":
+            display_df = adult_data.copy()
+            cols_to_show = ['Position', 'Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
+        elif category == "Male":
+            display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].copy()
+            cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
+        elif category == "Female":
+            display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].copy()
+            cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
+        elif category == "Non-Binary":
+            display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
+            cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
 
-        else:
-            # --- CLEAN FIXED 2-COLUMN DASHBOARD PATH ---
-            podium_cols = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-            
-            st.markdown('<div class="dashboard-scaled">', unsafe_allow_html=True)
-            
-            dash_cols = st.columns(2)
-            
-            # Left Column content (Men, then Non-Binary right underneath)
-            with dash_cols[0]:
-                st.markdown("<h3>🏃‍♂️ Top 5 Men</h3>", unsafe_allow_html=True)
-                top_m = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].head(5).copy()
-                if not top_m.empty:
-                    st.table(top_m[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-                else:
-                    st.write("No entries yet")
-                
-                top_x = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].head(5).copy()
-                if not top_x.empty:
-                    st.markdown("<br><br>", unsafe_allow_html=True)
-                    st.markdown("<h3>👟 Top Non-Binary</h3>", unsafe_allow_html=True)
-                    st.table(top_x[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-            
-            # Right Column content (Women)
-            with dash_cols[1]:
-                st.markdown("<h3>🏃‍♀️ Top 5 Women</h3>", unsafe_allow_html=True)
-                top_f = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].head(5).copy()
-                if not top_f.empty:
-                    st.table(top_f[podium_cols].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-                else:
-                    st.write("No entries yet")
-                
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.session_state.row_chunk = 0
-            st.session_state.view_index += 1
+    # Apply text filter if query exists
+    if search_query:
+        # Check both name match and partial/exact bib conversions
+        name_match = display_df['Name'].str.contains(search_query, case=False, na=False)
+        bib_match = display_df['Bib'].astype(str).str.contains(search_query, na=False)
+        display_df = display_df[name_match | bib_match]
 
-# 7. Transition management loop rerun
-time.sleep(CURRENT_SCREEN_TIME)
-st.rerun()
+    # Render results
+    if not display_df.empty:
+        st.table(display_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
+    else:
+        st.warning("No runners found matching your selection criteria.")
