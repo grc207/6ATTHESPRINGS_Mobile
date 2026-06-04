@@ -127,33 +127,38 @@ def get_processed_data():
             roster = conn.read(worksheet="Runner Data", ttl="60s")
             roster.columns = roster.columns.str.strip()
             
-            # Ensure proper mapping hooks for Roster items
             roster['Bib'] = pd.to_numeric(roster['Bib'], errors='coerce').fillna(0).astype(int)
             roster['Name'] = roster['First Name'].astype(str) + " " + roster['Last Name'].astype(str)
             
-            # Load your raw reader log columns from Data Input
+            # Load Data Input Sheet
             reads = conn.read(worksheet="Data Input", ttl="60s")
             
             if reads.empty:
                 return pd.DataFrame(), pd.DataFrame()
             
-            # Isolate the first 2 columns exclusively (Col A = Chip, Col B = Timestamp)
-            # This completely ignores your custom Column C / helper rows to prevent crashes
-            reads = reads.iloc[:, :2]
-            reads.columns = ['Bib', 'Timestamp']
+            # Dynamically handle whatever column layout is present on Data Input
+            # Force strip down to exactly the first 3 columns to ignore trailing sheet cells
+            reads = reads.iloc[:, :3]
+            reads.columns = ['Chip_ID', 'Timestamp', 'Bib']
             
             # --- DATATYPE SAFETY HOOKS ---
-            # Re-convert any automated datetime cell blocks back to text strings dynamically
             if pd.api.types.is_datetime64_any_dtype(reads['Timestamp']):
                 reads['Timestamp'] = reads['Timestamp'].dt.strftime('%H:%M:%S')
             else:
                 reads['Timestamp'] = reads['Timestamp'].astype(str).str.strip("'\" ")
             
+            # Convert Column C (Bib) to integers so it matches the roster perfectly
             reads['Bib'] = pd.to_numeric(reads['Bib'], errors='coerce').fillna(0).astype(int)
+
+            # Drop any zero/empty bib anomalies from processing
+            reads = reads[reads['Bib'] > 0]
+
+            if reads.empty:
+                return pd.DataFrame(), pd.DataFrame()
 
             start_time = datetime.strptime("08:00:00", "%H:%M:%S")
             
-            # Core race aggregation loops
+            # Group by our explicitly mapped Bib column
             stats = reads.groupby('Bib').agg(
                 Loop_Count=('Timestamp', 'count'),
                 Last_Read=('Timestamp', 'max')
