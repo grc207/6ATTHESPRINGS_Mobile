@@ -87,7 +87,7 @@ def get_processed_data():
     for attempt in range(3):
         try:
             # Load Roster
-            roster = conn.read(worksheet="Runner Data", ttl="10s")  # Lower TTL for interactive lookup snappiness
+            roster = conn.read(worksheet="Runner Data", ttl="10s")
             roster.columns = roster.columns.str.strip()
             
             roster['Bib'] = pd.to_numeric(roster['Bib'], errors='coerce').fillna(0).astype(int)
@@ -102,11 +102,6 @@ def get_processed_data():
             reads = reads.iloc[:, :3]
             reads.columns = ['Chip_ID', 'Timestamp', 'Bib']
             
-            if pd.api.types.is_datetime64_any_dtype(reads['Timestamp']):
-                reads['Timestamp'] = reads['Timestamp'].dt.strftime('%H:%M:%S')
-            else:
-                reads['Timestamp'] = reads['Timestamp'].astype(str).str.strip("'\" ")
-            
             reads['Bib'] = pd.to_numeric(reads['Bib'], errors='coerce').fillna(0).astype(int)
             reads = reads[reads['Bib'] > 0]
 
@@ -115,28 +110,40 @@ def get_processed_data():
 
             start_time = datetime.strptime("08:00:00", "%H:%M:%S")
             
+            # Helper logic to strictly convert manual & automated strings to a uniform timedelta format
+            def parse_to_time_object(ts_val):
+                try:
+                    # Clean up string
+                    ts_str = str(ts_val).strip("'\" ").split()[-1]
+                    return datetime.strptime(ts_str, "%H:%M:%S")
+                except Exception:
+                    return start_time # Fallback to start line if corrupt
+
+            # Apply parsed conversion so math max works perfectly numerical/temporal
+            reads['Time_Obj'] = reads['Timestamp'].apply(parse_to_time_object)
+            
+            # Group rows using the reliable datetime object max
             stats = reads.groupby('Bib').agg(
-                Loop_Count=('Timestamp', 'count'),
-                Last_Read=('Timestamp', 'max')
+                Loop_Count=('Time_Obj', 'count'),
+                Max_Time_Obj=('Time_Obj', 'max')
             ).reset_index()
             
             df = pd.merge(roster, stats, on='Bib', how='inner')
             df['Mileage'] = df['Loop_Count'] * 4
             
-            def calc_elapsed(ts_str):
+            def calc_elapsed(max_time):
                 try:
-                    clean_ts = str(ts_str).strip("'\" ")
-                    ts_part = clean_ts.split()[-1]
-                    
-                    ts = datetime.strptime(ts_part, "%H:%M:%S")
-                    delta = ts - start_time
+                    delta = max_time - start_time
                     hours, remainder = divmod(delta.seconds, 3600)
                     minutes, seconds = divmod(remainder, 60)
                     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                 except Exception:
                     return "00:00:00"
                     
-            df['Overall Time'] = df['Last_Read'].apply(calc_elapsed)
+            df['Overall Time'] = df['Max_Time_Obj'].apply(calc_elapsed)
+            
+            # Sort helpers safely back to pure text strings for background dashboard ordering consistency
+            df['Last_Read'] = df['Max_Time_Obj'].dt.strftime('%H:%M:%S')
             
             df['distance'] = df['distance'].astype(str).str.strip()
             youth_mask = df['distance'].str.contains("Youth", case=False, na=False)
@@ -184,7 +191,6 @@ if not youth_data.empty:
 # 4. Interactive Search UI Components
 st.markdown("<h1>🔍 COMPETITOR RESULTS LOOKUP</h1>", unsafe_allow_html=True)
 
-# UI Inputs side-by-side or stacked cleanly
 search_query = st.text_input("Search by Name or Bib Number:", value="", placeholder="e.g. Bob or 142").strip()
 
 category = st.radio(
@@ -194,37 +200,4 @@ category = st.radio(
 )
 
 # 5. Core Filtering Logic
-if adult_data.empty and youth_data.empty:
-    st.info("Awaiting initial RFID reads...")
-else:
-    # Segment data based on selected category radio button
-    if category == "Youth":
-        display_df = youth_data.copy()
-        cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-    else:
-        # Base filter handles excluding youth out of overall paths
-        if category == "Overall (Adults)":
-            display_df = adult_data.copy()
-            cols_to_show = ['Position', 'Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-        elif category == "Male":
-            display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'M'].copy()
-            cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-        elif category == "Female":
-            display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'F'].copy()
-            cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-        elif category == "Non-Binary":
-            display_df = adult_data[adult_data['gender'].str.upper().str.strip() == 'X'].copy()
-            cols_to_show = ['Class Place', 'Bib', 'Name', 'Loop_Count', 'Mileage', 'Overall Time']
-
-    # Apply text filter if query exists
-    if search_query:
-        # Check both name match and partial/exact bib conversions
-        name_match = display_df['Name'].str.contains(search_query, case=False, na=False)
-        bib_match = display_df['Bib'].astype(str).str.contains(search_query, na=False)
-        display_df = display_df[name_match | bib_match]
-
-    # Render results
-    if not display_df.empty:
-        st.table(display_df[cols_to_show].rename(columns={'Loop_Count': 'Loops'}), hide_index=True)
-    else:
-        st.warning("No runners found matching your selection criteria.")
+if adult_data.empty and youth_data.
