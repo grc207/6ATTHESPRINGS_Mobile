@@ -7,7 +7,7 @@ import base64
 import os
 
 # 1. Page Configuration
-st.set_page_config(page_title="RACER LOOKUP", layout="wide")
+st.set_page_config(page_title="FINAL RACER LOOKUP", layout="wide")
 
 # --- SECURE BACKGROUND LOGO ENGINE ---
 bg_image_css = ""
@@ -48,10 +48,18 @@ st.markdown(
     h1 {{
         font-size: 30px !important;
         margin-top: 0px !important;
-        margin-bottom: 20px !important;
+        margin-bottom: 5px !important;
         text-align: center !important;
         font-weight: bold !important;
         color: #111111 !important;
+    }}
+
+    .byline {{
+        font-size: 16px !important;
+        text-align: center !important;
+        font-style: italic !important;
+        color: #555555 !important;
+        margin-bottom: 25px !important;
     }}
     
     table {{
@@ -80,93 +88,81 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 2. Data Connection
+# 2. Hardlocked Data Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def get_processed_data():
-    for attempt in range(3):
-        try:
-            # Load Roster
-            roster = conn.read(worksheet="Runner Data", ttl="10s")
-            roster.columns = roster.columns.str.strip()
-            
-            roster['Bib'] = pd.to_numeric(roster['Bib'], errors='coerce').fillna(0).astype(int)
-            roster['Name'] = roster['First Name'].astype(str) + " " + roster['Last Name'].astype(str)
-            
-            # Load Data Input Sheet
-            reads = conn.read(worksheet="Data Input", ttl="10s")
-            
-            if reads.empty:
-                return pd.DataFrame(), pd.DataFrame()
-            
-            reads = reads.iloc[:, :3]
-            reads.columns = ['Chip_ID', 'Timestamp', 'Bib']
-            
-            reads['Bib'] = pd.to_numeric(reads['Bib'], errors='coerce').fillna(0).astype(int)
-            reads = reads[reads['Bib'] > 0]
+def get_frozen_data():
+    try:
+        # Load final fixed datasets with a frozen high TTL to prevent constant data refetches
+        roster = conn.read(worksheet="Runner Data", ttl="30d")
+        roster.columns = roster.columns.str.strip()
+        
+        roster['Bib'] = pd.to_numeric(roster['Bib'], errors='coerce').fillna(0).astype(int)
+        roster['Name'] = roster['First Name'].astype(str) + " " + roster['Last Name'].astype(str)
+        
+        reads = conn.read(worksheet="Data Input", ttl="30d")
+        
+        if reads.empty:
+            return pd.DataFrame(), pd.DataFrame()
+        
+        reads = reads.iloc[:, :3]
+        reads.columns = ['Chip_ID', 'Timestamp', 'Bib']
+        
+        reads['Bib'] = pd.to_numeric(reads['Bib'], errors='coerce').fillna(0).astype(int)
+        reads = reads[reads['Bib'] > 0]
 
-            if len(reads) == 0:
-                return pd.DataFrame(), pd.DataFrame()
+        if len(reads) == 0:
+            return pd.DataFrame(), pd.DataFrame()
 
-            start_time = datetime.strptime("08:00:00", "%H:%M:%S")
-            
-            # Helper logic to strictly convert manual & automated strings to a uniform timedelta format
-            def parse_to_time_object(ts_val):
-                try:
-                    ts_str = str(ts_val).strip("'\" ").split()[-1]
-                    return datetime.strptime(ts_str, "%H:%M:%S")
-                except Exception:
-                    return start_time # Fallback to start line if formatting is corrupted
+        # Configured historic event start date: June 20th at 8:00 AM
+        start_time = datetime.strptime("2026-06-20 08:00:00", "%Y-%m-%d %H:%M:%S")
+        
+        def parse_to_time_object(ts_val):
+            try:
+                ts_str = str(ts_val).strip("'\" ").split()[-1]
+                # Combine static date prefix with individual runner timestamps
+                return datetime.strptime(f"2026-06-20 {ts_str}", "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                return start_time
 
-            # Apply parsed conversion so math max works perfectly across dates and text types
-            reads['Time_Obj'] = reads['Timestamp'].apply(parse_to_time_object)
-            
-            # Group rows using the reliable datetime object max calculation
-            stats = reads.groupby('Bib').agg(
-                Loop_Count=('Time_Obj', 'count'),
-                Max_Time_Obj=('Time_Obj', 'max')
-            ).reset_index()
-            
-            df = pd.merge(roster, stats, on='Bib', how='inner')
-            df['Mileage'] = df['Loop_Count'] * 4
-            
-            def calc_elapsed(max_time):
-                try:
-                    delta = max_time - start_time
-                    hours, remainder = divmod(delta.seconds, 3600)
-                    minutes, seconds = divmod(remainder, 60)
-                    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                except Exception:
-                    return "00:00:00"
-                    
-            df['Overall Time'] = df['Max_Time_Obj'].apply(calc_elapsed)
-            
-            # Save standard sort text representations for overall table structuring
-            df['Last_Read'] = df['Max_Time_Obj'].dt.strftime('%H:%M:%S')
-            
-            df['distance'] = df['distance'].astype(str).str.strip()
-            youth_mask = df['distance'].str.contains("Youth", case=False, na=False)
-            
-            adult_df = df[~youth_mask & df['distance'].str.contains("6HR", case=False, na=False)].copy()
-            youth_df = df[youth_mask].copy()
-            
-            adult_df = adult_df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
-            youth_df = youth_df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
-            
-            return adult_df, youth_df
-
-        except Exception as e:
-            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                time.sleep(1)
-                continue
-            else:
-                st.error(f"Error processing live data: {e}")
-                return pd.DataFrame(), pd.DataFrame()
+        reads['Time_Obj'] = reads['Timestamp'].apply(parse_to_time_object)
+        
+        stats = reads.groupby('Bib').agg(
+            Loop_Count=('Time_Obj', 'count'),
+            Max_Time_Obj=('Time_Obj', 'max')
+        ).reset_index()
+        
+        df = pd.merge(roster, stats, on='Bib', how='inner')
+        df['Mileage'] = df['Loop_Count'] * 4
+        
+        def calc_elapsed(max_time):
+            try:
+                delta = max_time - start_time
+                hours, remainder = divmod(delta.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            except Exception:
+                return "00:00:00"
                 
-    return pd.DataFrame(), pd.DataFrame()
+        df['Overall Time'] = df['Max_Time_Obj'].apply(calc_elapsed)
+        df['Last_Read'] = df['Max_Time_Obj'].dt.strftime('%H:%M:%S')
+        
+        df['distance'] = df['distance'].astype(str).str.strip()
+        youth_mask = df['distance'].str.contains("Youth", case=False, na=False)
+        
+        adult_df = df[~youth_mask & df['distance'].str.contains("6HR", case=False, na=False)].copy()
+        youth_df = df[youth_mask].copy()
+        
+        adult_df = adult_df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
+        youth_df = youth_df.sort_values(by=['Loop_Count', 'Last_Read'], ascending=[False, True]).reset_index(drop=True)
+        
+        return adult_df, youth_df
+    except Exception as e:
+        st.error(f"Error loading final event archive dataset: {e}")
+        return pd.DataFrame(), pd.DataFrame()
 
-# 3. Pull and Master-Rank Data
-adult_data, youth_data = get_processed_data()
+# 3. Pull Data Snapshots
+adult_data, youth_data = get_frozen_data()
 
 if not adult_data.empty:
     adult_data['Position'] = [i+1 for i in range(len(adult_data))]
@@ -187,8 +183,9 @@ if not adult_data.empty:
 if not youth_data.empty:
     youth_data['Class Place'] = [f"Y{i+1}" for i in range(len(youth_data))]
 
-# 4. Interactive Search UI Components
+# 4. Interactive Search UI Components with Required Byline
 st.markdown("<h1>🔍 COMPETITOR RESULTS LOOKUP</h1>", unsafe_allow_html=True)
+st.markdown('<div class="byline">results are not official until recorded on UltraSignup</div>', unsafe_allow_html=True)
 
 search_query = st.text_input("Search by Name or Bib Number:", value="", placeholder="e.g. Bob or 142").strip()
 
@@ -200,7 +197,7 @@ category = st.radio(
 
 # 5. Core Filtering Logic
 if adult_data.empty and youth_data.empty:
-    st.info("Awaiting initial RFID reads...")
+    st.info("No verified historical event logs found.")
 else:
     if category == "Youth":
         display_df = youth_data.copy()
